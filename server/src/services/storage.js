@@ -157,10 +157,24 @@ class PresenceStore {
 class CallStore {
   constructor() {
     this.activeCall = null;
+    this.staleMs = 45000;
+  }
+
+  cleanupStale() {
+    if (this.activeCall && Date.now() - this.activeCall.startedAt > this.staleMs) {
+      this.activeCall = null;
+    }
   }
 
   start(callerId, type) {
-    if (this.activeCall) return false;
+    this.cleanupStale();
+    if (this.activeCall) {
+      if (this.activeCall.callerId === callerId) {
+        this.activeCall = { callerId, type, startedAt: Date.now() };
+        return true;
+      }
+      return false;
+    }
     this.activeCall = { callerId, type, startedAt: Date.now() };
     return true;
   }
@@ -169,11 +183,17 @@ class CallStore {
     this.activeCall = null;
   }
 
+  involvesUser(userId) {
+    return this.activeCall?.callerId === userId;
+  }
+
   isActive() {
+    this.cleanupStale();
     return this.activeCall !== null;
   }
 
   get() {
+    this.cleanupStale();
     return this.activeCall;
   }
 }

@@ -1,6 +1,6 @@
 import { Server } from 'socket.io';
 import { messageStore, presenceStore, callStore } from './services/storage.js';
-import { sendTelegramNotification } from './services/telegram.js';
+import { sendTelegramToAll } from './services/telegram.js';
 import { sanitizeText, isValidUserId } from './utils/sanitize.js';
 import { SOCKET_EVENTS, MESSAGE_TYPES } from '../../shared/constants.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -76,11 +76,7 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
         messageStore.add(message);
         io.emit(SOCKET_EVENTS.MESSAGE_NEW, message);
 
-        const partnerId = userId === 'user1' ? 'user2' : 'user1';
-        const partnerPresence = presenceStore.getPresence()[partnerId];
-        if (!partnerPresence?.online) {
-          sendTelegramNotification(partnerId);
-        }
+        sendTelegramToAll('message');
 
         callback?.({ success: true, message });
       } catch {
@@ -128,14 +124,15 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
     });
 
     socket.on(SOCKET_EVENTS.CALL_OFFER, (payload) => {
-      if (callStore.isActive()) {
+      const callType = payload?.type === 'video' ? 'video' : 'voice';
+      if (!callStore.start(userId, callType)) {
         socket.emit(SOCKET_EVENTS.CALL_BUSY, {});
         return;
       }
-      callStore.start(userId, payload?.type || 'voice');
+      sendTelegramToAll(callType === 'video' ? 'video_call' : 'voice_call');
       socket.broadcast.emit(SOCKET_EVENTS.CALL_INCOMING, {
         callerId: userId,
-        type: payload?.type || 'voice',
+        type: callType,
         offer: payload?.offer,
       });
     });
@@ -165,6 +162,10 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
     });
 
     socket.on('disconnect', () => {
+      if (callStore.involvesUser(userId)) {
+        callStore.end();
+        socket.broadcast.emit(SOCKET_EVENTS.CALL_END, { endedBy: userId });
+      }
       presenceStore.setOffline(userId);
       broadcastPresence(io);
     });

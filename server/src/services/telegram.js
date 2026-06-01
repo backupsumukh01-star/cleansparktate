@@ -1,4 +1,9 @@
-import { getRandomNotificationMessage } from '../../../shared/notificationMessages.js';
+/** Short privacy labels: 1 word (msg), 2 words (call), 3 words (video call) */
+export const NOTIFICATION_TEXT = {
+  message: 'Message',
+  voice_call: 'Voice Call',
+  video_call: 'Incoming Video Call',
+};
 
 const USER_CONFIG = {
   user1: {
@@ -22,17 +27,9 @@ function getConfigForUser(userId) {
   return { token, chatId };
 }
 
-/**
- * Notify the recipient when they are offline.
- * @param {string} recipientUserId - 'user1' or 'user2' (who receives the alert)
- */
-export async function sendTelegramNotification(recipientUserId) {
-  const cfg = getConfigForUser(recipientUserId);
-  if (!cfg) {
-    return;
-  }
-
-  const text = getRandomNotificationMessage();
+async function sendToUser(userId, text) {
+  const cfg = getConfigForUser(userId);
+  if (!cfg) return;
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${cfg.token}/sendMessage`, {
@@ -47,11 +44,20 @@ export async function sendTelegramNotification(recipientUserId) {
 
     if (!response.ok) {
       const err = await response.text();
-      console.error(`Telegram notification failed for ${recipientUserId}:`, err);
+      console.error(`Telegram failed for ${userId}:`, err);
     }
   } catch (error) {
-    console.error(`Telegram notification error for ${recipientUserId}:`, error.message);
+    console.error(`Telegram error for ${userId}:`, error.message);
   }
+}
+
+/**
+ * Send the same short notification to BOTH bots at the same time.
+ * @param {'message'|'voice_call'|'video_call'} type
+ */
+export async function sendTelegramToAll(type = 'message') {
+  const text = NOTIFICATION_TEXT[type] || NOTIFICATION_TEXT.message;
+  await Promise.all([sendToUser('user1', text), sendToUser('user2', text)]);
 }
 
 export function getTelegramConfigStatus() {

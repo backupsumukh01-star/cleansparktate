@@ -82,6 +82,7 @@ export function useWebRTC({ emit, on, userId }) {
 
   const startCall = useCallback(async (type = 'voice') => {
     try {
+      cleanup();
       setCallType(type);
       isCallerRef.current = true;
       setCallState('calling');
@@ -128,9 +129,8 @@ export function useWebRTC({ emit, on, userId }) {
 
   const rejectCall = useCallback(() => {
     emit('call:reject', {});
-    setIncomingCall(null);
-    setCallState('idle');
-  }, [emit]);
+    cleanup();
+  }, [emit, cleanup]);
 
   const endCall = useCallback(() => {
     emit('call:end', {});
@@ -219,6 +219,7 @@ export function useWebRTC({ emit, on, userId }) {
     const unsubEnd = on('call:end', () => cleanup());
     const unsubBusy = on('call:busy', () => {
       cleanup();
+      emit('call:end', {});
       setCallState('busy');
       setTimeout(() => setCallState('idle'), 2000);
     });

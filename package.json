@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "install:all": "npm install --prefix server && npm install --prefix client",
+    "kill-ports": "lsof -ti:3001 | xargs kill -9 2>/dev/null; lsof -ti:5173 | xargs kill -9 2>/dev/null; echo Ports cleared",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",

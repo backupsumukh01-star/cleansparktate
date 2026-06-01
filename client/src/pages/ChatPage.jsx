@@ -3,7 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
 import { uploadFile } from '../utils/api';
-import { requestNotificationPermission, showBrowserNotification } from '../utils/notifications';
+import {
+  requestNotificationPermission,
+  showBrowserNotification,
+  BROWSER_NOTIFICATION_TEXT,
+} from '../utils/notifications';
 import { SOCKET_EVENTS, MESSAGE_TYPES } from '../../../shared/constants.js';
 import ChatHeader from '../components/ChatHeader';
 import MessageList from '../components/MessageList';
@@ -43,9 +47,7 @@ export default function ChatPage() {
         });
 
         if (message.senderId !== userId) {
-          if (document.visibilityState !== 'visible') {
-            showBrowserNotification('You have a new message');
-          }
+          showBrowserNotification('Message');
           emit(SOCKET_EVENTS.MESSAGE_SEEN, { messageId: message.id });
         }
       }),
@@ -67,6 +69,14 @@ export default function ChatPage() {
           ...prev,
           [typingUserId]: { ...prev[typingUserId], typing, lastActive: Date.now() },
         }));
+      }),
+      on(SOCKET_EVENTS.CALL_INCOMING, ({ callerId, type }) => {
+        if (callerId === userId) return;
+        const label =
+          type === 'video'
+            ? BROWSER_NOTIFICATION_TEXT.video_call
+            : BROWSER_NOTIFICATION_TEXT.voice_call;
+        showBrowserNotification(label);
       }),
     ];
 
