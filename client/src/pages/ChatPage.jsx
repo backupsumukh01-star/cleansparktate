@@ -12,6 +12,7 @@ import {
 import { SOCKET_EVENTS, MESSAGE_TYPES } from '../../../shared/constants.js';
 import ChatHeader from '../components/ChatHeader';
 import MessageList from '../components/MessageList';
+import MessageActionOverlay from '../components/MessageActionOverlay';
 import ChatInput from '../components/ChatInput';
 import CallOverlay from '../components/CallOverlay';
 import IncomingCall from '../components/IncomingCall';
@@ -24,7 +25,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState(() => loadCachedMessages());
   const [presence, setPresence] = useState({});
   const [replyTo, setReplyTo] = useState(null);
-  const [showMenu, setShowMenu] = useState(null);
+  const [actionMessage, setActionMessage] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(null);
   const [copyToast, setCopyToast] = useState(false);
 
@@ -185,7 +186,7 @@ export default function ChatPage() {
   const handleDelete = useCallback(
     (messageId) => {
       emit(SOCKET_EVENTS.MESSAGE_DELETE, { messageId });
-      setShowMenu(null);
+      setActionMessage(null);
     },
     [emit]
   );
@@ -205,7 +206,7 @@ export default function ChatPage() {
     } catch {
       // fallback
     }
-    setShowMenu(null);
+    setActionMessage(null);
   }, []);
 
   const handleTypingStart = useCallback(() => emit(SOCKET_EVENTS.TYPING_START), [emit]);
@@ -230,13 +231,25 @@ export default function ChatPage() {
       <MessageList
         messages={messages}
         userId={userId}
-        showMenu={showMenu}
-        onToggleMenu={(id) => setShowMenu(id === null ? null : showMenu === id ? null : id)}
+        onOpenActions={setActionMessage}
         onReact={handleReact}
-        onReply={(msg) => { setReplyTo(msg); setShowMenu(null); }}
-        onDelete={handleDelete}
-        onCopy={handleCopy}
       />
+
+      {actionMessage && (
+        <MessageActionOverlay
+          message={actionMessage}
+          isOwn={actionMessage.senderId === userId}
+          userId={userId}
+          onClose={() => setActionMessage(null)}
+          onReact={handleReact}
+          onReply={(msg) => {
+            setReplyTo(msg);
+            setActionMessage(null);
+          }}
+          onDelete={handleDelete}
+          onCopy={handleCopy}
+        />
+      )}
 
       <ChatInput
         onSend={sendMessage}

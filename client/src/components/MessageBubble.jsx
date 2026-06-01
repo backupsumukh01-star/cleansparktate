@@ -1,9 +1,9 @@
+import { useRef } from 'react';
 import { formatTime } from '../utils/format';
 import { getMediaUrl } from '../utils/api';
 import { MESSAGE_TYPES } from '../../../shared/constants.js';
 import { useLongPress } from '../hooks/useLongPress';
 import VoicePlayer from './VoicePlayer';
-import ReactionPicker from './ReactionPicker';
 import LinkifiedText from './LinkifiedText';
 
 function ReplyQuote({ replyMessage, isOwn }) {
@@ -30,28 +30,28 @@ function SeenIcon({ seen }) {
   }
   return (
     <svg className="w-4 h-4 text-sky-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7M9 13l4 4" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13l4 4L23 7" transform="translate(-4,0)" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
     </svg>
   );
 }
 
-function ReactionDisplay({ reactions, isOwn }) {
-  if (!reactions || Object.keys(reactions).length === 0) return null;
+function ReactionBadge({ reactions, isOwn }) {
+  if (!reactions) return null;
   const entries = Object.entries(reactions).filter(([, e]) => e);
   if (entries.length === 0) return null;
 
+  const emojis = [...new Set(entries.map(([, e]) => e))];
+
   return (
     <div
-      className={`flex flex-wrap gap-0.5 mt-0.5 ${isOwn ? 'justify-end' : 'justify-start'}`}
+      className={`absolute -bottom-2 ${isOwn ? 'right-2' : 'left-2'} z-10`}
     >
-      <span className="inline-flex items-center gap-0.5 bg-wa-panel border border-wa-border rounded-full px-2 py-0.5 text-sm shadow-sm">
-        {[...new Set(entries.map(([, e]) => e))].map((emoji) => (
-          <span key={emoji}>{emoji}</span>
+      <span className="inline-flex items-center gap-0.5 bg-wa-panel border border-wa-border rounded-full px-1.5 py-0.5 text-base shadow-md min-h-[26px]">
+        {emojis.map((e) => (
+          <span key={e} className="leading-none">
+            {e}
+          </span>
         ))}
-        {entries.length > 1 && (
-          <span className="text-[10px] text-wa-muted ml-0.5">{entries.length}</span>
-        )}
       </span>
     </div>
   );
@@ -62,18 +62,22 @@ export default function MessageBubble({
   isOwn,
   userId,
   replyMessage,
-  onReply,
-  onDelete,
-  onCopy,
+  onOpenActions,
   onReact,
-  showMenu,
-  onToggleMenu,
 }) {
-  const longPressHandlers = useLongPress(() => onToggleMenu(message.id));
+  const lastTapRef = useRef(0);
 
-  const handleReact = (emoji) => {
-    onReact(message.id, emoji);
-    onToggleMenu(null);
+  const longPressHandlers = useLongPress(() => onOpenActions(message), { delay: 450 });
+
+  const handleTap = (e) => {
+    if (e.target.closest('a')) return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 350) {
+      onReact(message.id, '👍');
+      lastTapRef.current = 0;
+      return;
+    }
+    lastTapRef.current = now;
   };
 
   const renderContent = () => {
@@ -109,51 +113,25 @@ export default function MessageBubble({
     }
   };
 
-  const myReaction = message.reactions?.[userId];
-
   return (
     <div
-      className={`flex flex-col mb-1 animate-slide-up ${isOwn ? 'items-end' : 'items-start'}`}
-      {...longPressHandlers}
+      className={`flex flex-col mb-2 animate-slide-up relative ${isOwn ? 'items-end' : 'items-start'}`}
     >
-      {showMenu === message.id && (
-        <div className={`mb-1 ${isOwn ? 'self-end' : 'self-start'}`}>
-          <ReactionPicker
-            onSelect={handleReact}
-            onClose={() => onToggleMenu(null)}
-          />
+      <div
+        className={`relative max-w-[85%] select-none touch-manipulation ${isOwn ? 'ml-auto' : 'mr-auto'}`}
+        {...longPressHandlers}
+        onClick={handleTap}
+      >
+        <div className={`message-bubble ${isOwn ? 'message-bubble-out' : 'message-bubble-in'}`}>
+          <ReplyQuote replyMessage={replyMessage} isOwn={isOwn} />
+          {renderContent()}
+          <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+            <span className="text-[11px] opacity-60">{formatTime(message.createdAt)}</span>
+            {isOwn && <SeenIcon seen={message.seen} />}
+          </div>
         </div>
-      )}
-
-      <div className={`message-bubble ${isOwn ? 'message-bubble-out' : 'message-bubble-in'} relative`}>
-        <ReplyQuote replyMessage={replyMessage} isOwn={isOwn} />
-        {renderContent()}
-        <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-          {myReaction && <span className="text-sm leading-none">{myReaction}</span>}
-          <span className="text-[11px] opacity-60">{formatTime(message.createdAt)}</span>
-          {isOwn && <SeenIcon seen={message.seen} />}
-        </div>
+        <ReactionBadge reactions={message.reactions} isOwn={isOwn} />
       </div>
-
-      <ReactionDisplay reactions={message.reactions} isOwn={isOwn} />
-
-      {showMenu === message.id && (
-        <div className="flex gap-1 mt-1 bg-wa-panel rounded-lg p-1 shadow-lg border border-wa-border animate-fade-in z-10 flex-wrap">
-          <button type="button" onClick={() => onReply(message)} className="px-3 py-1.5 text-xs text-wa-text rounded-lg hover:bg-wa-input">
-            Reply
-          </button>
-          {message.type === MESSAGE_TYPES.TEXT && (
-            <button type="button" onClick={() => onCopy(message.text)} className="px-3 py-1.5 text-xs text-wa-text rounded-lg hover:bg-wa-input">
-              Copy
-            </button>
-          )}
-          {isOwn && (
-            <button type="button" onClick={() => onDelete(message.id)} className="px-3 py-1.5 text-xs text-red-400 rounded-lg hover:bg-wa-input">
-              Delete
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -14,14 +14,30 @@ const ICE_SERVERS = {
       username: 'openrelayproject',
       credential: 'openrelayproject',
     },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
   iceCandidatePoolSize: 10,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+};
+
+const VIDEO_CONSTRAINTS = {
+  width: { ideal: 1280, min: 640 },
+  height: { ideal: 720, min: 480 },
+  frameRate: { ideal: 30, min: 15 },
+  facingMode: 'user',
 };
 
 export function useWebRTC({ emit, on, userId }) {
   const pcRef = useRef(null);
   const localStreamRef = useRef(null);
   const iceQueueRef = useRef([]);
+  const disconnectTimerRef = useRef(null);
+  const callStateRef = useRef('idle');
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [callState, setCallState] = useState('idle');
@@ -34,6 +50,18 @@ export function useWebRTC({ emit, on, userId }) {
   const timerRef = useRef(null);
   const isCallerRef = useRef(false);
 
+  const setCallStateSafe = useCallback((s) => {
+    callStateRef.current = s;
+    setCallState(s);
+  }, []);
+
+  const clearDisconnectTimer = useCallback(() => {
+    if (disconnectTimerRef.current) {
+      clearTimeout(disconnectTimerRef.current);
+      disconnectTimerRef.current = null;
+    }
+  }, []);
+
   const flushIceQueue = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc?.remoteDescription) return;
@@ -43,29 +71,32 @@ export function useWebRTC({ emit, on, userId }) {
       try {
         await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch {
-        // ignore late candidates
+        // ignore
       }
     }
   }, []);
 
-  const addIceCandidate = useCallback(
-    async (candidate) => {
-      if (!candidate) return;
-      const pc = pcRef.current;
-      if (!pc?.remoteDescription) {
-        iceQueueRef.current.push(candidate);
-        return;
-      }
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch {
-        iceQueueRef.current.push(candidate);
-      }
-    },
-    []
-  );
+  const addIceCandidate = useCallback(async (candidate) => {
+    if (!candidate) return;
+    const pc = pcRef.current;
+    if (!pc?.remoteDescription) {
+      iceQueueRef.current.push(candidate);
+      return;
+    }
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch {
+      iceQueueRef.current.push(candidate);
+    }
+  }, []);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) return;
+    timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+  }, []);
 
   const cleanup = useCallback(() => {
+    clearDisconnectTimer();
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -77,13 +108,13 @@ export function useWebRTC({ emit, on, userId }) {
     iceQueueRef.current = [];
     setLocalStream(null);
     setRemoteStream(null);
-    setCallState('idle');
+    setCallStateSafe('idle');
     setIncomingCall(null);
     setCallDuration(0);
     setIsMuted(false);
     setIsCameraOff(false);
     isCallerRef.current = false;
-  }, []);
+  }, [clearDisconnectTimer, setCallStateSafe]);
 
   const createPeerConnection = useCallback(() => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -95,19 +126,34 @@ export function useWebRTC({ emit, on, userId }) {
     };
 
     pc.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) setRemoteStream(stream);
+      const stream = event.streams?.[0] || new MediaStream([event.track]);
+      setRemoteStream((prev) => {
+        if (prev) {
+          event.track && !prev.getTracks().find((t) => t.id === event.track.id) && prev.addTrack(event.track);
+          return new MediaStream(prev.getTracks());
+        }
+        return stream;
+      });
     };
 
-    pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      if (state === 'connected' && isCallerRef.current) {
-        setCallState('connected');
-        if (!timerRef.current) {
-          timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
-        }
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      if (iceState === 'connected' || iceState === 'completed') {
+        clearDisconnectTimer();
+        setCallStateSafe('connected');
+        startTimer();
       }
-      if (state === 'failed') {
+      if (iceState === 'disconnected') {
+        clearDisconnectTimer();
+        disconnectTimerRef.current = setTimeout(() => {
+          const s = pc.iceConnectionState;
+          if (s === 'disconnected' || s === 'failed') {
+            cleanup();
+            emit('call:end', {});
+          }
+        }, 12000);
+      }
+      if (iceState === 'failed') {
         try {
           pc.restartIce();
         } catch {
@@ -115,23 +161,45 @@ export function useWebRTC({ emit, on, userId }) {
           emit('call:end', {});
         }
       }
-      if (state === 'closed') {
-        cleanup();
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        clearDisconnectTimer();
+        setCallStateSafe('connected');
+        startTimer();
       }
     };
 
     pcRef.current = pc;
     return pc;
-  }, [emit, cleanup]);
+  }, [emit, cleanup, clearDisconnectTimer, setCallStateSafe, startTimer]);
 
   const getMedia = useCallback(async (type, facing = 'user') => {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-      video:
-        type === 'video'
-          ? { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : false,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: type === 'video' ? { ...VIDEO_CONSTRAINTS, facingMode: facing } : false,
     });
+
+    if (type === 'video') {
+      const vt = stream.getVideoTracks()[0];
+      if (vt?.applyConstraints) {
+        try {
+          await vt.applyConstraints({
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          });
+        } catch {
+          // use default
+        }
+      }
+    }
+
     localStreamRef.current = stream;
     setLocalStream(stream);
     return stream;
@@ -139,18 +207,21 @@ export function useWebRTC({ emit, on, userId }) {
 
   const startCall = useCallback(
     async (type = 'voice') => {
-      if (callState !== 'idle' && callState !== 'busy') return;
+      if (callStateRef.current !== 'idle' && callStateRef.current !== 'busy') return;
       try {
         cleanup();
         setCallType(type);
         isCallerRef.current = true;
-        setCallState('calling');
+        setCallStateSafe('calling');
 
         const stream = await getMedia(type);
         const pc = createPeerConnection();
         stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: type === 'video' });
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: type === 'video',
+        });
         await pc.setLocalDescription(offer);
         emit('call:offer', { type, offer: pc.localDescription });
       } catch (err) {
@@ -159,7 +230,7 @@ export function useWebRTC({ emit, on, userId }) {
         emit('call:end', {});
       }
     },
-    [callState, getMedia, createPeerConnection, emit, cleanup]
+    [getMedia, createPeerConnection, emit, cleanup, setCallStateSafe]
   );
 
   const acceptCall = useCallback(async () => {
@@ -180,14 +251,14 @@ export function useWebRTC({ emit, on, userId }) {
       await pc.setLocalDescription(answer);
       emit('call:answer', { answer: pc.localDescription });
 
-      setCallState('connected');
-      timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
+      setCallStateSafe('connected');
+      startTimer();
     } catch (err) {
       console.error('Accept call failed:', err);
       cleanup();
       emit('call:end', {});
     }
-  }, [incomingCall, getMedia, createPeerConnection, emit, cleanup, flushIceQueue]);
+  }, [incomingCall, getMedia, createPeerConnection, emit, cleanup, flushIceQueue, setCallStateSafe, startTimer]);
 
   const rejectCall = useCallback(() => {
     emit('call:reject', {});
@@ -224,7 +295,7 @@ export function useWebRTC({ emit, on, userId }) {
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
-        video: { facingMode: newFacing, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { ...VIDEO_CONSTRAINTS, facingMode: newFacing },
       });
       const newTrack = newStream.getVideoTracks()[0];
       const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === 'video');
@@ -241,8 +312,9 @@ export function useWebRTC({ emit, on, userId }) {
   useEffect(() => {
     const unsubIncoming = on('call:incoming', (data) => {
       if (data.callerId === userId) return;
+      if (callStateRef.current !== 'idle') return;
       setIncomingCall(data);
-      setCallState('incoming');
+      setCallStateSafe('incoming');
       setCallType(data.type || 'voice');
     });
 
@@ -253,10 +325,8 @@ export function useWebRTC({ emit, on, userId }) {
         if (!pc) return;
         await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
         await flushIceQueue();
-        setCallState('connected');
-        if (!timerRef.current) {
-          timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
-        }
+        setCallStateSafe('connected');
+        startTimer();
       } catch (err) {
         console.error('Handle answer failed:', err);
         cleanup();
@@ -272,8 +342,8 @@ export function useWebRTC({ emit, on, userId }) {
     const unsubEnd = on('call:end', () => cleanup());
     const unsubBusy = on('call:busy', () => {
       cleanup();
-      setCallState('busy');
-      setTimeout(() => setCallState('idle'), 1500);
+      setCallStateSafe('busy');
+      setTimeout(() => setCallStateSafe('idle'), 1500);
     });
 
     return () => {
@@ -284,7 +354,7 @@ export function useWebRTC({ emit, on, userId }) {
       unsubEnd?.();
       unsubBusy?.();
     };
-  }, [on, userId, cleanup, flushIceQueue, addIceCandidate]);
+  }, [on, userId, cleanup, flushIceQueue, addIceCandidate, setCallStateSafe, startTimer]);
 
   useEffect(() => () => cleanup(), [cleanup]);
 

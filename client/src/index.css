@@ -37,7 +37,11 @@ body {
 }
 
 .message-bubble {
-  @apply rounded-2xl px-3 py-2 max-w-[85%] break-words shadow-sm;
+  @apply rounded-lg px-3 py-1.5 max-w-full break-words shadow-sm;
+}
+
+.touch-manipulation {
+  touch-action: manipulation;
 }
 
 .message-bubble a {
