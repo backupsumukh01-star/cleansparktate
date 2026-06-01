@@ -30,3 +30,7 @@ dev-dist/
 
 # Vercel
 .vercel
+
+# Chat backup (runtime data)
+server/data/
+data/

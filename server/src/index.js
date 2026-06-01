@@ -13,6 +13,8 @@ import authRoutes, { initPasswordHash } from './routes/auth.js';
 import chatRoutes from './routes/chat.js';
 import { setupSocketIO } from './socket.js';
 import { apiLimiter } from './middleware/rateLimit.js';
+import { messageStore } from './services/storage.js';
+import { saveBackupNow, getBackupPath } from './services/chatBackup.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -94,7 +96,15 @@ async function start() {
 
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Chat backup file: ${getBackupPath()}`);
   });
+
+  const shutdown = () => {
+    saveBackupNow(messageStore.getAll());
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 start().catch((err) => {

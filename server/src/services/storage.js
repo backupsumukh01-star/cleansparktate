@@ -1,16 +1,29 @@
 import { MAX_MESSAGES, MEDIA_TTL_MS } from '../../../shared/constants.js';
+import { loadBackup, saveBackup } from './chatBackup.js';
 
 class MessageStore {
   constructor() {
-    this.messages = [];
+    this.messages = loadBackup();
     this.seenUpTo = null;
+    if (this.messages.length > 0) {
+      console.log(`Restored ${this.messages.length} messages from backup`);
+    }
+  }
+
+  trim() {
+    if (this.messages.length > MAX_MESSAGES) {
+      this.messages = this.messages.slice(-MAX_MESSAGES);
+    }
+  }
+
+  persist() {
+    saveBackup(this.messages);
   }
 
   add(message) {
     this.messages.push(message);
-    if (this.messages.length > MAX_MESSAGES) {
-      this.messages = this.messages.slice(-MAX_MESSAGES);
-    }
+    this.trim();
+    this.persist();
     return message;
   }
 
@@ -26,6 +39,7 @@ class MessageStore {
     const index = this.messages.findIndex((m) => m.id === id);
     if (index === -1) return null;
     const [removed] = this.messages.splice(index, 1);
+    this.persist();
     return removed;
   }
 
@@ -34,6 +48,7 @@ class MessageStore {
     if (msg) {
       msg.seen = true;
       msg.seenAt = Date.now();
+      this.persist();
     }
     this.seenUpTo = messageId;
     return this.messages.filter((m) => !m.seen).map((m) => m.id);
@@ -49,6 +64,7 @@ class MessageStore {
         unmarked.push(msg.id);
       }
     }
+    this.persist();
     return unmarked;
   }
 
@@ -62,6 +78,7 @@ class MessageStore {
     } else {
       msg.reactions[userId] = clean;
     }
+    this.persist();
     return msg;
   }
 }

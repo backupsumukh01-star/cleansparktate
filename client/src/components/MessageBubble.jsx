@@ -4,6 +4,7 @@ import { MESSAGE_TYPES } from '../../../shared/constants.js';
 import { useLongPress } from '../hooks/useLongPress';
 import VoicePlayer from './VoicePlayer';
 import ReactionPicker from './ReactionPicker';
+import LinkifiedText from './LinkifiedText';
 
 function ReplyQuote({ replyMessage, isOwn }) {
   if (!replyMessage) return null;
@@ -104,7 +105,7 @@ export default function MessageBubble({
       case MESSAGE_TYPES.VOICE:
         return <VoicePlayer mediaId={message.mediaId} duration={message.mediaMeta?.duration} />;
       default:
-        return <p className="text-[15px] leading-[1.35] whitespace-pre-wrap">{message.text}</p>;
+        return <LinkifiedText text={message.text} isOwn={isOwn} />;
     }
   };
 

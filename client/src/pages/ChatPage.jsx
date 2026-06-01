@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
-import { uploadFile } from '../utils/api';
+import { uploadFile, apiFetch } from '../utils/api';
+import { loadCachedMessages, saveCachedMessages, mergeMessages } from '../utils/chatCache';
 import {
   requestNotificationPermission,
   showBrowserNotification,
@@ -20,7 +21,7 @@ export default function ChatPage() {
   const userId = user.userId;
   const { connected, on, emit } = useSocket(true);
 
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => loadCachedMessages());
   const [presence, setPresence] = useState({});
   const [replyTo, setReplyTo] = useState(null);
   const [showMenu, setShowMenu] = useState(null);
@@ -35,9 +36,29 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/chat/messages')
+      .then((data) => {
+        if (cancelled || !data?.messages) return;
+        setMessages((prev) => mergeMessages(prev, data.messages));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveCachedMessages(messages);
+    }
+  }, [messages]);
+
+  useEffect(() => {
     const unsubs = [
       on(SOCKET_EVENTS.PRESENCE_SYNC, (data) => {
-        setMessages(data.messages || []);
+        const serverMsgs = data.messages || [];
+        setMessages((prev) => mergeMessages(prev, serverMsgs));
         setPresence(data.presence || {});
       }),
       on(SOCKET_EVENTS.MESSAGE_NEW, (message) => {

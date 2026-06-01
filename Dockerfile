@@ -20,6 +20,8 @@ COPY shared/ ./shared/
 COPY --from=client-build /app/client/dist ./client/dist
 
 WORKDIR /app/server
+RUN mkdir -p /app/server/data
+ENV CHAT_BACKUP_DIR=/app/server/data
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
