@@ -1,0 +1,32 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# production
+client/dist/
+
+# env files — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# PWA dev
+dev-dist/
+.vite/
+
+# Vercel
+.vercel
