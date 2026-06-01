@@ -9,6 +9,7 @@ export default function MessageList({
   onReply,
   onDelete,
   onCopy,
+  onReact,
 }) {
   const bottomRef = useRef(null);
   const containerRef = useRef(null);
@@ -35,12 +36,14 @@ export default function MessageList({
           key={msg.id}
           message={msg}
           isOwn={msg.senderId === userId}
+          userId={userId}
           replyMessage={getReplyMessage(msg.replyTo)}
           showMenu={showMenu}
           onToggleMenu={onToggleMenu}
           onReply={onReply}
           onDelete={onDelete}
           onCopy={onCopy}
+          onReact={onReact}
         />
       ))}
       <div ref={bottomRef} />

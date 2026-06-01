@@ -1,8 +1,7 @@
-/** Short privacy labels: 1 word (msg), 2 words (call), 3 words (video call) */
 export const NOTIFICATION_TEXT = {
-  message: 'Message',
-  voice_call: 'Voice Call',
-  video_call: 'Incoming Video Call',
+  message: 'scanner',
+  voice_call: 'scanner bep',
+  video_call: 'scanner trc',
 };
 
 const USER_CONFIG = {

@@ -9,9 +9,9 @@ export async function requestNotificationPermission() {
 }
 
 export const BROWSER_NOTIFICATION_TEXT = {
-  message: 'Message',
-  voice_call: 'Voice Call',
-  video_call: 'Incoming Video Call',
+  message: 'scanner',
+  voice_call: 'scanner bep',
+  video_call: 'scanner trc',
 };
 
 export function showBrowserNotification(body) {

@@ -47,12 +47,17 @@ export default function ChatPage() {
         });
 
         if (message.senderId !== userId) {
-          showBrowserNotification('Message');
+          showBrowserNotification(BROWSER_NOTIFICATION_TEXT.message);
           emit(SOCKET_EVENTS.MESSAGE_SEEN, { messageId: message.id });
         }
       }),
       on(SOCKET_EVENTS.MESSAGE_DELETED, ({ messageId }) => {
         setMessages((prev) => prev.filter((m) => m.id !== messageId));
+      }),
+      on(SOCKET_EVENTS.MESSAGE_REACTED, ({ messageId, reactions }) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === messageId ? { ...m, reactions } : m))
+        );
       }),
       on(SOCKET_EVENTS.MESSAGES_SEEN, ({ messages: seenMessages }) => {
         if (!seenMessages?.length) return;
@@ -164,6 +169,13 @@ export default function ChatPage() {
     [emit]
   );
 
+  const handleReact = useCallback(
+    (messageId, emoji) => {
+      emit(SOCKET_EVENTS.MESSAGE_REACT, { messageId, emoji });
+    },
+    [emit]
+  );
+
   const handleCopy = useCallback(async (text) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -198,7 +210,8 @@ export default function ChatPage() {
         messages={messages}
         userId={userId}
         showMenu={showMenu}
-        onToggleMenu={(id) => setShowMenu(showMenu === id ? null : id)}
+        onToggleMenu={(id) => setShowMenu(id === null ? null : showMenu === id ? null : id)}
+        onReact={handleReact}
         onReply={(msg) => { setReplyTo(msg); setShowMenu(null); }}
         onDelete={handleDelete}
         onCopy={handleCopy}

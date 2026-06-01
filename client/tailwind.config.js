@@ -19,7 +19,17 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Segoe UI', 'Helvetica Neue', 'system-ui', 'sans-serif'],
+        sans: [
+          'Helvetica Neue',
+          'Helvetica',
+          'Arial',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Roboto',
+          'sans-serif',
+        ],
       },
       animation: {
         'fade-in': 'fadeIn 0.2s ease-out',

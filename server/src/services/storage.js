@@ -51,6 +51,19 @@ class MessageStore {
     }
     return unmarked;
   }
+
+  setReaction(messageId, userId, emoji) {
+    const msg = this.getById(messageId);
+    if (!msg) return null;
+    if (!msg.reactions) msg.reactions = {};
+    const clean = typeof emoji === 'string' ? emoji.trim().slice(0, 8) : '';
+    if (!clean || msg.reactions[userId] === clean) {
+      delete msg.reactions[userId];
+    } else {
+      msg.reactions[userId] = clean;
+    }
+    return msg;
+  }
 }
 
 class MediaStore {

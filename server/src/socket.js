@@ -71,6 +71,7 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
           seenAt: null,
           createdAt: Date.now(),
           deleted: false,
+          reactions: {},
         };
 
         messageStore.add(message);
@@ -82,6 +83,23 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
       } catch {
         callback?.({ error: 'Failed to send message' });
       }
+    });
+
+    socket.on(SOCKET_EVENTS.MESSAGE_REACT, (payload, callback) => {
+      const messageId = payload?.messageId;
+      const emoji = payload?.emoji;
+      if (!messageId || !emoji) {
+        return callback?.({ error: 'Invalid reaction' });
+      }
+      const msg = messageStore.setReaction(messageId, userId, emoji);
+      if (!msg) {
+        return callback?.({ error: 'Message not found' });
+      }
+      io.emit(SOCKET_EVENTS.MESSAGE_REACTED, {
+        messageId,
+        reactions: msg.reactions,
+      });
+      callback?.({ success: true, reactions: msg.reactions });
     });
 
     socket.on(SOCKET_EVENTS.MESSAGE_DELETE, (payload, callback) => {
