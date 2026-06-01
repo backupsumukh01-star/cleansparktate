@@ -3,7 +3,13 @@ import bcrypt from 'bcryptjs';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sanitizeText } from '../utils/sanitize.js';
-import { assignUserId, releaseUserId } from '../services/userSlots.js';
+import {
+  assignUserId,
+  releaseUserId,
+  cancelRelease,
+  getOnlineUserIdsFromPresence,
+} from '../services/userSlots.js';
+import { presenceStore } from '../services/storage.js';
 
 const router = Router();
 let passwordHash = null;
@@ -28,10 +34,13 @@ router.post('/login', loginLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    const userId = assignUserId(req.sessionID);
-    if (!userId) {
-      return res.status(503).json({ error: 'Both chat slots are in use. Try again later.' });
+    if (req.session?.authenticated && req.session?.userId) {
+      cancelRelease(req.sessionID);
+      return res.json({ success: true, userId: req.session.userId });
     }
+
+    const onlineUserIds = getOnlineUserIdsFromPresence(presenceStore.getPresence());
+    const userId = assignUserId(req.sessionID, onlineUserIds);
 
     req.session.authenticated = true;
     req.session.userId = userId;

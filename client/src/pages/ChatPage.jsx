@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSocket } from '../hooks/useSocket';
 import { useWebRTC } from '../hooks/useWebRTC';
+import { useInactivityLogout } from '../hooks/useInactivityLogout';
 import { uploadFile, apiFetch } from '../utils/api';
 import { loadCachedMessages, saveCachedMessages, mergeMessages } from '../utils/chatCache';
 import {
@@ -31,6 +32,16 @@ export default function ChatPage() {
 
   const webrtc = useWebRTC({ emit, on, userId });
   const seenSentRef = useRef(new Set());
+
+  const callActive =
+    webrtc.callState === 'calling' ||
+    webrtc.callState === 'connected' ||
+    webrtc.callState === 'incoming';
+
+  const { bumpActivity } = useInactivityLogout({
+    logout,
+    pause: callActive,
+  });
 
   useEffect(() => {
     requestNotificationPermission();
@@ -63,6 +74,7 @@ export default function ChatPage() {
         setPresence(data.presence || {});
       }),
       on(SOCKET_EVENTS.MESSAGE_NEW, (message) => {
+        bumpActivity();
         setMessages((prev) => {
           if (prev.some((m) => m.id === message.id)) return prev;
           return [...prev, message];
@@ -108,7 +120,7 @@ export default function ChatPage() {
     ];
 
     return () => unsubs.forEach((fn) => fn?.());
-  }, [on, emit, userId]);
+  }, [on, emit, userId, bumpActivity]);
 
   useEffect(() => {
     if (!connected) return;
@@ -130,6 +142,7 @@ export default function ChatPage() {
 
   const sendMessage = useCallback(
     (payload) => {
+      bumpActivity();
       emit(SOCKET_EVENTS.MESSAGE_SEND, {
         type: MESSAGE_TYPES.TEXT,
         text: payload.text,
@@ -137,7 +150,7 @@ export default function ChatPage() {
       });
       setReplyTo(null);
     },
-    [emit]
+    [emit, bumpActivity]
   );
 
   const sendMediaMessage = useCallback(
@@ -145,6 +158,7 @@ export default function ChatPage() {
       setUploadProgress(0);
       try {
         const result = await uploadFile(file, category, setUploadProgress);
+        bumpActivity();
         emit(SOCKET_EVENTS.MESSAGE_SEND, {
           type,
           mediaId: result.mediaId,
@@ -158,7 +172,7 @@ export default function ChatPage() {
         setUploadProgress(null);
       }
     },
-    [emit, replyTo]
+    [emit, replyTo, bumpActivity]
   );
 
   const handleVoiceSend = useCallback(
@@ -167,6 +181,7 @@ export default function ChatPage() {
       setUploadProgress(0);
       try {
         const result = await uploadFile(file, 'voice', setUploadProgress);
+        bumpActivity();
         emit(SOCKET_EVENTS.MESSAGE_SEND, {
           type: MESSAGE_TYPES.VOICE,
           mediaId: result.mediaId,
@@ -180,7 +195,7 @@ export default function ChatPage() {
         setUploadProgress(null);
       }
     },
-    [emit, replyTo]
+    [emit, replyTo, bumpActivity]
   );
 
   const handleDelete = useCallback(

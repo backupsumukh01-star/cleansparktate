@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import { messageStore, presenceStore, callStore } from './services/storage.js';
 import { sendTelegramToAll } from './services/telegram.js';
+import { cancelRelease, scheduleRelease } from './services/userSlots.js';
 import { sanitizeText, isValidUserId } from './utils/sanitize.js';
 import { SOCKET_EVENTS, MESSAGE_TYPES } from '../../shared/constants.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -35,6 +36,8 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
 
   io.on('connection', (socket) => {
     const userId = socket.userId;
+    const sessionId = socket.request.sessionID;
+    cancelRelease(sessionId);
     presenceStore.setOnline(socket.id, userId);
     broadcastPresence(io);
 
@@ -186,6 +189,7 @@ export function setupSocketIO(httpServer, sessionMiddleware) {
       }
       presenceStore.setOffline(userId);
       broadcastPresence(io);
+      scheduleRelease(sessionId);
     });
 
     socket.on('activity', () => {
